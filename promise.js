@@ -120,6 +120,50 @@ class PromiseA {
     })
     return promise2
   }
+  catch(onRejected) {
+    return this.then(undefined, onRejected)
+  }
+  static resolve(value) {
+    return new PromiseA((resolve, reject) => {
+      resolve(value)
+    })
+  }
+  static reject(reason) {
+    return new PromiseA((resolve, reject) => {
+      reject(reason)
+    })
+  }
+  static all(promises) {
+    return new PromiseA((resolve, reject) => {
+      let values = []
+      let valuesLength = 0
+      promises.forEach((promise, index) => {
+        PromiseA.resolve(promise).then(value => {
+          values[index] = value
+          if (++valuesLength === promises.length) {
+            resolve(values)
+          }
+        }, reject)
+      })
+    })
+  }
+  static race(promises) {
+    return new PromiseA((resolve, reject) => {
+      promises.forEach(promise => {
+        PromiseA.resolve(promise).then(resolve, reject)
+      })
+    })
+  }
+  // npm i -g promises-aplus-tests
+  // promises-aplus-tests promise.js
+  static deferred() {
+    let deferred = {}
+    deferred.promise = new PromiseA((resolve, reject) => {
+      deferred.resolve = resolve
+      deferred.reject = reject
+    })
+    return deferred
+  }
 }
 
 module.exports = PromiseA
