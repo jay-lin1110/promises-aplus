@@ -1,5 +1,7 @@
 基于 Promises/A+规范自定义封装一个 **PromiseA** 类，实现 ECMAScript2015 中 `Promise` 的基本功能
 
+![](/assets/callback-hell.jpg)
+
 # Promises/A+
 
 `Promise` 表示一个异步操作的最终结果，与之进行交互的方式主要是 `then` 方法，该方法注册了两个回调函数，用于接收 promise 的终值或本 promise 不能执行的原因。

@@ -1,4 +1,4 @@
-const PromiseA = require('./promise')
+const PromiseA = require('./src/promise')
 
 const test = (value) => new PromiseA((resolve, reject) => {
   setTimeout(() => {
