@@ -1,6 +1,6 @@
-const isFunction = value => typeof value === 'function';
+const { isFunction, isObject } = require('./utils');
 
-class PromiseA {
+class PromisesA {
   static #FULFILLED;
   static #REJECTED;
   static #PENDING;
@@ -14,7 +14,7 @@ class PromiseA {
     // optional step
     // x instanceof this && x.then(this.#Resolve, reject);
 
-    if ((x && typeof x === 'object') || isFunction(x)) {
+    if (isObject(x) || isFunction(x)) {
       let called = false;
 
       try {
@@ -246,4 +246,4 @@ class PromiseA {
   };
 }
 
-module.exports = PromiseA;
+module.exports = PromisesA;
