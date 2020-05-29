@@ -1,14 +1,21 @@
+// use promises-aplus-tests to test
 // npm i -g promises-aplus-tests
 // promises-aplus-tests test.js
-const PromiseA = require('./promise')
+const Promise = require('./index');
 
-PromiseA.deferred = function () {
-  let deferred = {}
-  deferred.promise = new PromiseA((resolve, reject) => {
-    deferred.resolve = resolve
-    deferred.reject = reject
-  })
-  return deferred
-}
+Promise.deferred = function () {
+  const deferral = {
+    promise: null,
+    resolve: null,
+    reject: null,
+  };
 
-module.exports = PromiseA
+  deferral['promise'] = new this((resolve, reject) => {
+    deferral.resolve = resolve;
+    deferral.reject = reject;
+  });
+
+  return deferral;
+};
+
+module.exports = Promise;

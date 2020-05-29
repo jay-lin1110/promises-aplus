@@ -1,4 +1,15 @@
-基于 Promises/A+规范自定义封装一个 **PromiseA** 类，实现 ECMAScript2015 中 `Promise` 的基本功能
+基于 Promises/A+ 规范自定义封装一个 **PromiseA** 类，实现 ECMAScript2015 中 `Promise` 的基本功能。
+
+- PromiseA.prototype.then()
+- PromiseA.prototype.catch()
+- PromiseA.prototype.finally()
+
+- PromiseA.reject()
+- PromiseA.resolve()
+- PromiseA.all()
+- PromiseA.race()
+- PromiseA.allSettled()
+- PromiseA.defer()
 
 ![](/assets/callback-hell.jpg)
 
