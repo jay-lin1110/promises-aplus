@@ -4,12 +4,19 @@ class PromisesA {
   static #FULFILLED;
   static #REJECTED;
   static #PENDING;
-  static #Resolve = (promise2, x, resolve, reject) => {
-    /*         promise2 === x &&
-      reject(new TypeError('Chaining cycle detected for promise #<Promise>')); */
 
-    Object.is(promise2, x) &&
-      reject(new TypeError('Chaining cycle detected for promise #<Promise>'));
+  static #Resolve = (promise2, x, resolve, reject) => {
+    /*     if (promise2 === x) {
+      return reject(
+        new TypeError('Chaining cycle detected for promise #<Promise>')
+      );
+    } */
+
+    if (Object.is(promise2, x)) {
+      return reject(
+        new TypeError('Chaining cycle detected for promise #<Promise>')
+      );
+    }
 
     // optional step
     // x instanceof this && x.then(this.#Resolve, reject);
@@ -52,6 +59,7 @@ class PromisesA {
   #value;
   #reason;
   #callbackSet = new Set();
+
   #resolve = value => {
     if (value instanceof this.constructor) {
       return value.then(this.#resolve, this.#reject);
@@ -63,8 +71,7 @@ class PromisesA {
     this.#value = value;
     this.#callbackSet.forEach(
       callbackMap =>
-        isFunction(callbackMap.get('onFulfilled')) &&
-        callbackMap.get('onFulfilled')()
+        callbackMap.has('onFulfilled') && callbackMap.get('onFulfilled')()
     );
   };
   #reject = reason => {
@@ -74,8 +81,7 @@ class PromisesA {
     this.#reason = reason;
     this.#callbackSet.forEach(
       callbackMap =>
-        isFunction(callbackMap.get('onRejected')) &&
-        callbackMap.get('onRejected')()
+        callbackMap.has('onRejected') && callbackMap.get('onRejected')()
     );
   };
 
@@ -151,7 +157,7 @@ class PromisesA {
           )
         );
 
-      isFunction(statusMap.get(this.#status)) && statusMap.get(this.#status)();
+      statusMap.has(this.#status) && statusMap.get(this.#status)();
     });
 
     return promise2;
@@ -285,5 +291,3 @@ class PromisesA {
 }
 
 module.exports = PromisesA;
-
-// Promise.all([1, Promise.resolve(3), 2]).then(console.log);
