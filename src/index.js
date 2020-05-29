@@ -1,4 +1,4 @@
-const { isFunction, isObject } = require('./utils');
+const { isFunction, isObject, after } = require('./utils');
 
 class PromisesA {
   static #FULFILLED;
@@ -215,6 +215,44 @@ class PromisesA {
       );
     });
 
+  static all4After = iterator =>
+    new this((resolve, reject) => {
+      const resolveValues = after(iterator['length'], resolve);
+      const values = [];
+
+      iterator.forEach((item, index) => {
+        this.resolve(item).then(value => {
+          values[index] = value;
+          resolveValues(values);
+        }, reject);
+      });
+    });
+
+  static allSettled4After = iterator =>
+    new this(resolve => {
+      const resolveValues = after(iterator['length'], resolve);
+      const values = [];
+
+      iterator.forEach((item, index) =>
+        this.resolve(item).then(
+          value => {
+            values[index] = {
+              status: Symbol.keyFor(this['#FULFILLED']),
+              value,
+            };
+            resolveValues(values);
+          },
+          reason => {
+            values[index] = {
+              status: Symbol.keyFor(this['#REJECTED']),
+              reason,
+            };
+            resolveValues(values);
+          }
+        )
+      );
+    });
+
   static defer = () => {
     const deferral = {
       promise: null,
@@ -247,3 +285,5 @@ class PromisesA {
 }
 
 module.exports = PromisesA;
+
+// Promise.all([1, Promise.resolve(3), 2]).then(console.log);

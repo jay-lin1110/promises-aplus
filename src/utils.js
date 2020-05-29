@@ -7,3 +7,6 @@ typeSet.forEach(type => typeMap.set(`is${type}`, isType(type)));
 
 exports.isFunction = typeMap.get('isFunction');
 exports.isObject = typeMap.get('isObject');
+exports.after = (times, callback) => (...args) => {
+  --times === 0 && callback(args);
+};
