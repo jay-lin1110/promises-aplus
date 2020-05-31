@@ -259,7 +259,12 @@ class PromisesA {
       );
     });
 
-  static defer = () => {
+  static try = callback =>
+    new this((resolve, reject) =>
+      this.resolve(callback()).then(resolve, reject)
+    );
+
+  /*   static defer = () => {
     const deferral = {
       promise: null,
       resolve: null,
@@ -272,22 +277,37 @@ class PromisesA {
     });
 
     return deferral;
-  };
+  }; */
+
+  static defer = (deferral = {}) =>
+    Object.assign(deferral, {
+      promise: new this((resolve, reject) =>
+        Object.assign(deferral, { resolve, reject })
+      ),
+    });
 
   static get deferred() {
     return this.defer;
   }
 
-  static defer4Map = () => {
+  /*   static defer4Map = () => {
     const deferral = new Map();
 
-    const promise = new this((resolve, reject) => {
-      deferral.set('resolve', resolve);
-      deferral.set('reject', reject);
-    });
+    const promise = Reflect.construct(this, [
+      (resolve, reject) =>
+        deferral.set('resolve', resolve).set('reject', reject),
+    ]);
 
     return deferral.set('promise', promise);
-  };
+  }; */
+  static defer4Map = (deferral = new Map()) =>
+    deferral.set(
+      'promise',
+      Reflect.construct(this, [
+        (resolve, reject) =>
+          deferral.set('resolve', resolve).set('reject', reject),
+      ])
+    );
 }
 
 module.exports = PromisesA;

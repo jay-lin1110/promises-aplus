@@ -1,4 +1,4 @@
-const Promise = require('./src/promises');
+const Promise = require('./src');
 
 // const test = (value) => new Promise((resolve, reject) => {
 //   setTimeout(() => {
@@ -105,3 +105,6 @@ const Promise = require('./src/promises');
 //   .then(v => void console.log(v))
 //   .then(() => new Promise(() => {}))
 //   .then(v => console.log(v));
+
+// new this.constructor(() => {})
+// Reflect.construct(this, () => {})
