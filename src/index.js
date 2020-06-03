@@ -4,6 +4,7 @@ class PromisesA {
   static #PENDING = Symbol.for('pending');
   static #FULFILLED = Symbol.for('fulfilled');
   static #REJECTED = Symbol.for('rejected');
+  static #toCallbackSet = new WeakMap(); // 弱引用哈希添加实例私有属性
 
   static #Resolve = (promise2, x, resolve, reject) => {
     /*     if (promise2 === x) {
@@ -58,9 +59,11 @@ class PromisesA {
 
   #status = this.constructor.#PENDING;
   #value;
-  #callbackSet = new Set();
+  // #callbackSet = new Set();
 
   constructor(executor) {
+    new.target.#toCallbackSet.set(this, new Set());
+
     const resolve = value => {
       // 配合类方法成员 this.constructor.resolve() 的实现
       if (value instanceof new.target) {
@@ -71,11 +74,21 @@ class PromisesA {
 
       this.#status = new.target.#FULFILLED;
       this.#value = value;
-      !!this.#callbackSet.size &&
+      /*       !!this.#callbackSet.size &&
         this.#callbackSet.forEach(
           callbackMap =>
             callbackMap.has('onFulfilled') && callbackMap.get('onFulfilled')()
-        );
+        ); */
+      const toCallbackSet = new.target.#toCallbackSet;
+
+      !!toCallbackSet.has(this) &&
+        !!toCallbackSet.get(this).size &&
+        toCallbackSet
+          .get(this)
+          .forEach(
+            callbackMap =>
+              callbackMap.has('onFulfilled') && callbackMap.get('onFulfilled')()
+          );
     };
 
     const reject = reason => {
@@ -83,11 +96,21 @@ class PromisesA {
 
       this.#status = new.target.#REJECTED;
       this.#value = reason;
-      !!this.#callbackSet.size &&
+      /*       !!this.#callbackSet.size &&
         this.#callbackSet.forEach(
           callbackMap =>
             callbackMap.has('onRejected') && callbackMap.get('onRejected')()
-        );
+        ); */
+      const toCallbackSet = new.target.#toCallbackSet;
+
+      !!toCallbackSet.has(this) &&
+        !!toCallbackSet.get(this).size &&
+        toCallbackSet
+          .get(this)
+          .forEach(
+            callbackMap =>
+              callbackMap.has('onRejected') && callbackMap.get('onRejected')()
+          );
     };
 
     try {
@@ -117,7 +140,7 @@ class PromisesA {
           }
         });
 
-      const statusMap = new Map()
+      /*       const statusMap = new Map()
         .set(this.constructor.#PENDING, () =>
           this.#callbackSet.add(
             new Map([
@@ -125,6 +148,20 @@ class PromisesA {
               ['onRejected', callbackHandler(onRejected)],
             ])
           )
+        )
+        .set(this.constructor.#FULFILLED, callbackHandler(onFulfilled))
+        .set(this.constructor.#REJECTED, callbackHandler(onRejected)); */
+      const statusMap = new Map()
+        .set(
+          this.constructor.#PENDING,
+          () =>
+            !!this.constructor.#toCallbackSet.has(this) &&
+            this.constructor.#toCallbackSet.get(this).add(
+              new Map([
+                ['onFulfilled', callbackHandler(onFulfilled)],
+                ['onRejected', callbackHandler(onRejected)],
+              ])
+            )
         )
         .set(this.constructor.#FULFILLED, callbackHandler(onFulfilled))
         .set(this.constructor.#REJECTED, callbackHandler(onRejected));
