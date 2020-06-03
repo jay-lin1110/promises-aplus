@@ -1,9 +1,9 @@
 const { isFunction, isObject, after } = require('./utils');
 
 class PromisesA {
-  static #FULFILLED;
-  static #REJECTED;
-  static #PENDING;
+  static #PENDING = Symbol.for('pending');
+  static #FULFILLED = Symbol.for('fulfilled');
+  static #REJECTED = Symbol.for('rejected');
 
   static #Resolve = (promise2, x, resolve, reject) => {
     /*     if (promise2 === x) {
@@ -11,7 +11,6 @@ class PromisesA {
         new TypeError('Chaining cycle detected for promise #<Promise>')
       );
     } */
-
     if (Object.is(promise2, x)) {
       return reject(
         new TypeError('Chaining cycle detected for promise #<Promise>')
@@ -19,7 +18,9 @@ class PromisesA {
     }
 
     // optional step
-    // x instanceof this && x.then(this.#Resolve, reject);
+    /*     if (x instanceof this) {
+      return x.then(y => this.#Resolve(promise2, y, resolve, reject), reject);
+    } */
 
     if (isObject(x) || isFunction(x)) {
       let called = false;
@@ -34,7 +35,7 @@ class PromisesA {
                 if (called) return;
 
                 called = true;
-                this.#Resolve(promise2, y, resolve, reject);
+                return this.#Resolve(promise2, y, resolve, reject);
               },
               r => {
                 if (called) return;
@@ -55,45 +56,44 @@ class PromisesA {
     }
   };
 
-  #status;
+  #status = this.constructor.#PENDING;
   #value;
-  #reason;
   #callbackSet = new Set();
 
-  #resolve = value => {
-    if (value instanceof this.constructor) {
-      return value.then(this.#resolve, this.#reject);
-    }
-
-    if (this.#status !== this.constructor['#PENDING']) return;
-
-    this.#status = this.constructor['#FULFILLED'];
-    this.#value = value;
-    this.#callbackSet.forEach(
-      callbackMap =>
-        callbackMap.has('onFulfilled') && callbackMap.get('onFulfilled')()
-    );
-  };
-  #reject = reason => {
-    if (this.#status !== this.constructor['#PENDING']) return;
-
-    this.#status = this.constructor['#REJECTED'];
-    this.#reason = reason;
-    this.#callbackSet.forEach(
-      callbackMap =>
-        callbackMap.has('onRejected') && callbackMap.get('onRejected')()
-    );
-  };
-
   constructor(executor) {
-    new.target['#FULFILLED'] = Symbol.for('fulfilled');
-    new.target['#REJECTED'] = Symbol.for('rejected');
-    this.#status = new.target['#PENDING'] = Symbol.for('pending');
+    const resolve = value => {
+      // 配合类方法成员 this.constructor.resolve() 的实现
+      if (value instanceof new.target) {
+        return value.then(resolve, reject);
+      }
+
+      if (this.#status !== new.target.#PENDING) return;
+
+      this.#status = new.target.#FULFILLED;
+      this.#value = value;
+      !!this.#callbackSet.size &&
+        this.#callbackSet.forEach(
+          callbackMap =>
+            callbackMap.has('onFulfilled') && callbackMap.get('onFulfilled')()
+        );
+    };
+
+    const reject = reason => {
+      if (this.#status !== new.target.#PENDING) return;
+
+      this.#status = new.target.#REJECTED;
+      this.#value = reason;
+      !!this.#callbackSet.size &&
+        this.#callbackSet.forEach(
+          callbackMap =>
+            callbackMap.has('onRejected') && callbackMap.get('onRejected')()
+        );
+    };
 
     try {
-      executor(this.#resolve, this.#reject);
+      executor(resolve, reject);
     } catch (error) {
-      this.#reject(error);
+      reject(error);
     }
   }
 
@@ -106,56 +106,28 @@ class PromisesA {
             throw reason;
           };
 
+      const callbackHandler = onResolved => () =>
+        setTimeout(() => {
+          try {
+            const x = onResolved(this.#value);
+
+            this.constructor.#Resolve(promise2, x, resolve, reject);
+          } catch (error) {
+            reject(error);
+          }
+        });
+
       const statusMap = new Map()
-        .set(this.constructor['#FULFILLED'], () =>
-          setTimeout(() => {
-            try {
-              const x = onFulfilled(this.#value);
-
-              this.constructor.#Resolve(promise2, x, resolve, reject);
-            } catch (error) {
-              reject(error);
-            }
-          })
-        )
-        .set(this.constructor['#REJECTED'], () =>
-          setTimeout(() => {
-            try {
-              const x = onRejected(this.#reason);
-
-              this.constructor.#Resolve(promise2, x, resolve, reject);
-            } catch (error) {
-              reject(error);
-            }
-          })
-        )
-        .set(this.constructor['#PENDING'], () =>
+        .set(this.constructor.#PENDING, () =>
           this.#callbackSet.add(
-            new Map()
-              .set('onFulfilled', () =>
-                setTimeout(() => {
-                  try {
-                    const x = onFulfilled(this.#value);
-
-                    this.constructor.#Resolve(promise2, x, resolve, reject);
-                  } catch (error) {
-                    reject(error);
-                  }
-                })
-              )
-              .set('onRejected', () =>
-                setTimeout(() => {
-                  try {
-                    const x = onRejected(this.#reason);
-
-                    this.constructor.#Resolve(promise2, x, resolve, reject);
-                  } catch (error) {
-                    reject(error);
-                  }
-                })
-              )
+            new Map([
+              ['onFulfilled', callbackHandler(onFulfilled)],
+              ['onRejected', callbackHandler(onRejected)],
+            ])
           )
-        );
+        )
+        .set(this.constructor.#FULFILLED, callbackHandler(onFulfilled))
+        .set(this.constructor.#REJECTED, callbackHandler(onRejected));
 
       statusMap.has(this.#status) && statusMap.get(this.#status)();
     });
@@ -180,13 +152,15 @@ class PromisesA {
 
   static all = iterator =>
     new this((resolve, reject) => {
-      const values = [];
+      const { length } = iterator;
+      const values = new Array(length);
       let valuesLength = 0;
 
       iterator.forEach((item, index) => {
         this.resolve(item).then(value => {
           values[index] = value;
-          ++valuesLength === iterator['length'] && resolve(values);
+
+          ++valuesLength === length && resolve(values);
         }, reject);
       });
     });
@@ -198,24 +172,25 @@ class PromisesA {
 
   static allSettled = iterator =>
     new this(resolve => {
-      const values = [];
+      const { length } = iterator;
+      const values = new Array(length);
       let valuesLength = 0;
 
       iterator.forEach((item, index) =>
         this.resolve(item).then(
           value => {
             values[index] = {
-              status: Symbol.keyFor(this['#FULFILLED']),
+              status: Symbol.keyFor(this.#FULFILLED),
               value,
             };
-            ++valuesLength === iterator['length'] && resolve(values);
+            ++valuesLength === length && resolve(values);
           },
           reason => {
             values[index] = {
-              status: Symbol.keyFor(this['#REJECTED']),
+              status: Symbol.keyFor(this.#REJECTED),
               reason,
             };
-            ++valuesLength === iterator['length'] && resolve(values);
+            ++valuesLength === length && resolve(values);
           }
         )
       );
@@ -223,8 +198,9 @@ class PromisesA {
 
   static all4After = iterator =>
     new this((resolve, reject) => {
-      const resolveValues = after(iterator['length'], resolve);
-      const values = [];
+      const { length } = iterator;
+      const resolveValues = after(length, resolve);
+      const values = new Array(length);
 
       iterator.forEach((item, index) => {
         this.resolve(item).then(value => {
@@ -236,21 +212,22 @@ class PromisesA {
 
   static allSettled4After = iterator =>
     new this(resolve => {
-      const resolveValues = after(iterator['length'], resolve);
-      const values = [];
+      const { length } = iterator;
+      const resolveValues = after(length, resolve);
+      const values = new Array(length);
 
       iterator.forEach((item, index) =>
         this.resolve(item).then(
           value => {
             values[index] = {
-              status: Symbol.keyFor(this['#FULFILLED']),
+              status: Symbol.keyFor(this.#FULFILLED),
               value,
             };
             resolveValues(values);
           },
           reason => {
             values[index] = {
-              status: Symbol.keyFor(this['#REJECTED']),
+              status: Symbol.keyFor(this.#REJECTED),
               reason,
             };
             resolveValues(values);
@@ -264,14 +241,14 @@ class PromisesA {
       this.resolve(callback()).then(resolve, reject)
     );
 
-  /*   static defer = () => {
+  /* static defer = () => {
     const deferral = {
       promise: null,
       resolve: null,
       reject: null,
     };
 
-    deferral['promise'] = new this((resolve, reject) => {
+    deferral.promise = new this((resolve, reject) => {
       deferral.resolve = resolve;
       deferral.reject = reject;
     });

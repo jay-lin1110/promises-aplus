@@ -1,4 +1,16 @@
-const Promise = require('./src');
+const Promise = require('./src/index');
+
+// const p = new Promise((resolve, reject) => {
+//   setTimeout(() => resolve('timeout'));
+
+// resolve('resolve');
+// reject('reject');
+// throw new Error('error');
+// });
+
+// p.then(console.log, console.log);
+
+// Promise.resolve(Promise.reject(1)).then(console.log).catch(console.log);
 
 // const test = (value) => new Promise((resolve, reject) => {
 //   setTimeout(() => {
@@ -105,6 +117,3 @@ const Promise = require('./src');
 //   .then(v => void console.log(v))
 //   .then(() => new Promise(() => {}))
 //   .then(v => console.log(v));
-
-// new this.constructor(() => {})
-// Reflect.construct(this, () => {})
