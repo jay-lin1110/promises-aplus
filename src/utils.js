@@ -2,14 +2,36 @@ const typeSet = new Set(['Function', 'Object']);
 const typeMap = new Map();
 
 const isType = type => value =>
-  Object.prototype.toString.call(value) === `[object ${type}]`;
+  `[object ${type}]` === Object.prototype.toString.call(value);
 
 typeSet.forEach(type => typeMap.set(`is${type}`, isType(type)));
 
-exports.isFunction = typeMap.get('isFunction');
+const isFunction = typeMap.get('isFunction');
 
-exports.isObject = typeMap.get('isObject');
+const isObject = typeMap.get('isObject');
 
-exports.after = (times, callback) => (...args) => {
-  --times === 0 && callback(...args);
+const isPlainObject = value => !!value && 'object' === typeof value;
+
+const after = (times, callback) => (...args) => {
+  !--times && callback(...args);
+};
+
+const proxyFactory = (times, callback) =>
+  new Proxy(callback, {
+    apply(target, context, args) {
+      !Reflect.has(target, 'times') && Reflect.set(target, 'times', times);
+
+      times = Reflect.get(target, 'times');
+      Reflect.set(target, 'times', --times);
+
+      !times && Reflect.apply(target, context, args);
+    },
+  });
+
+module.exports = {
+  isFunction,
+  isObject,
+  isPlainObject,
+  after,
+  proxyFactory,
 };

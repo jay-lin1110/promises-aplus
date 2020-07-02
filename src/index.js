@@ -1,10 +1,9 @@
-const { isFunction, isObject, after } = require('./utils');
+const { isFunction, isPlainObject, after, proxyFactory } = require('./utils');
 
 class PromisesA {
   static #PENDING = Symbol.for('pending');
   static #FULFILLED = Symbol.for('fulfilled');
   static #REJECTED = Symbol.for('rejected');
-  static #toCallbackSet = new WeakMap(); // 弱引用哈希添加实例私有属性
 
   static #Resolve = (promise2, x, resolve, reject) => {
     /*     if (promise2 === x) {
@@ -23,7 +22,7 @@ class PromisesA {
       return x.then(y => this.#Resolve(promise2, y, resolve, reject), reject);
     } */
 
-    if (isObject(x) || isFunction(x)) {
+    if (isPlainObject(x) || isFunction(x)) {
       let called = false;
 
       try {
@@ -58,12 +57,10 @@ class PromisesA {
   };
 
   #status = this.constructor.#PENDING;
-  #value;
-  // #callbackSet = new Set();
+  #value = void 0;
+  #callbackSet = new Set();
 
   constructor(executor) {
-    new.target.#toCallbackSet.set(this, new Set());
-
     const resolve = value => {
       // 配合类方法成员 this.constructor.resolve() 的实现
       if (value instanceof new.target) {
@@ -74,21 +71,11 @@ class PromisesA {
 
       this.#status = new.target.#FULFILLED;
       this.#value = value;
-      /*       !!this.#callbackSet.size &&
+      !!this.#callbackSet.size &&
         this.#callbackSet.forEach(
           callbackMap =>
             callbackMap.has('onFulfilled') && callbackMap.get('onFulfilled')()
-        ); */
-      const toCallbackSet = new.target.#toCallbackSet;
-
-      !!toCallbackSet.has(this) &&
-        !!toCallbackSet.get(this).size &&
-        toCallbackSet
-          .get(this)
-          .forEach(
-            callbackMap =>
-              callbackMap.has('onFulfilled') && callbackMap.get('onFulfilled')()
-          );
+        );
     };
 
     const reject = reason => {
@@ -96,21 +83,11 @@ class PromisesA {
 
       this.#status = new.target.#REJECTED;
       this.#value = reason;
-      /*       !!this.#callbackSet.size &&
+      !!this.#callbackSet.size &&
         this.#callbackSet.forEach(
           callbackMap =>
             callbackMap.has('onRejected') && callbackMap.get('onRejected')()
-        ); */
-      const toCallbackSet = new.target.#toCallbackSet;
-
-      !!toCallbackSet.has(this) &&
-        !!toCallbackSet.get(this).size &&
-        toCallbackSet
-          .get(this)
-          .forEach(
-            callbackMap =>
-              callbackMap.has('onRejected') && callbackMap.get('onRejected')()
-          );
+        );
     };
 
     try {
@@ -129,8 +106,10 @@ class PromisesA {
             throw reason;
           };
 
-      const callbackHandler = onResolved => () =>
-        setTimeout(() => {
+      const callbackHandler = onResolved => () => {
+        const timeoutID = setTimeout(() => {
+          !!timeoutID && clearTimeout(timeoutID);
+
           try {
             const x = onResolved(this.#value);
 
@@ -139,29 +118,29 @@ class PromisesA {
             reject(error);
           }
         });
+      };
 
-      /*       const statusMap = new Map()
-        .set(this.constructor.#PENDING, () =>
-          this.#callbackSet.add(
-            new Map([
-              ['onFulfilled', callbackHandler(onFulfilled)],
-              ['onRejected', callbackHandler(onRejected)],
-            ])
-          )
-        )
-        .set(this.constructor.#FULFILLED, callbackHandler(onFulfilled))
-        .set(this.constructor.#REJECTED, callbackHandler(onRejected)); */
-      const statusMap = new Map()
-        .set(
+      /*       const statusMap = new Map([
+        [
           this.constructor.#PENDING,
           () =>
-            !!this.constructor.#toCallbackSet.has(this) &&
-            this.constructor.#toCallbackSet.get(this).add(
+            this.#callbackSet.add(
               new Map([
                 ['onFulfilled', callbackHandler(onFulfilled)],
                 ['onRejected', callbackHandler(onRejected)],
               ])
-            )
+            ),
+        ],
+        [this.constructor.#FULFILLED, callbackHandler(onFulfilled)],
+        [this.constructor.#REJECTED, callbackHandler(onRejected)],
+      ]); */
+      const statusMap = new Map()
+        .set(this.constructor.#PENDING, () =>
+          this.#callbackSet.add(
+            new Map()
+              .set('onFulfilled', callbackHandler(onFulfilled))
+              .set('onRejected', callbackHandler(onRejected))
+          )
         )
         .set(this.constructor.#FULFILLED, callbackHandler(onFulfilled))
         .set(this.constructor.#REJECTED, callbackHandler(onRejected));
@@ -185,89 +164,129 @@ class PromisesA {
 
   static resolve = value => new this(resolve => resolve(value));
 
-  static reject = reason => new this((undefined, reject) => reject(reason));
+  static reject = reason => new this((resolve, reject) => reject(reason));
 
-  static all = iterator =>
+  static all = iterable =>
     new this((resolve, reject) => {
-      const { length } = iterator;
-      const values = new Array(length);
-      let valuesLength = 0;
+      const { length } = iterable;
+      const values = Array(length);
+      let valuesLength = length;
 
-      iterator.forEach((item, index) => {
+      iterable.forEach((item, index) => {
         this.resolve(item).then(value => {
           values[index] = value;
 
-          ++valuesLength === length && resolve(values);
+          !--valuesLength && resolve(values);
         }, reject);
       });
     });
 
-  static race = iterator =>
+  static race = iterable =>
     new this((resolve, reject) =>
-      iterator.forEach(item => this.resolve(item).then(resolve, reject))
+      iterable.forEach(item => this.resolve(item).then(resolve, reject))
     );
 
-  static allSettled = iterator =>
+  static allSettled = iterable =>
     new this(resolve => {
-      const { length } = iterator;
-      const values = new Array(length);
-      let valuesLength = 0;
+      const { length } = iterable;
+      const values = Array(length);
+      let valuesLength = length;
 
-      iterator.forEach((item, index) =>
+      iterable.forEach((item, index) =>
         this.resolve(item).then(
           value => {
             values[index] = {
               status: Symbol.keyFor(this.#FULFILLED),
               value,
             };
-            ++valuesLength === length && resolve(values);
+            !--valuesLength && resolve(values);
           },
           reason => {
             values[index] = {
               status: Symbol.keyFor(this.#REJECTED),
               reason,
             };
-            ++valuesLength === length && resolve(values);
+            !--valuesLength && resolve(values);
           }
         )
       );
     });
 
-  static all4After = iterator =>
+  static all4After = iterable =>
     new this((resolve, reject) => {
-      const { length } = iterator;
-      const resolveValues = after(length, resolve);
-      const values = new Array(length);
+      const { length } = iterable;
+      const done2Resolve = after(length, resolve);
+      const values = Array(length);
 
-      iterator.forEach((item, index) => {
+      iterable.forEach((item, index) => {
         this.resolve(item).then(value => {
           values[index] = value;
-          resolveValues(values);
+          done2Resolve(values);
         }, reject);
       });
     });
 
-  static allSettled4After = iterator =>
-    new this(resolve => {
-      const { length } = iterator;
-      const resolveValues = after(length, resolve);
-      const values = new Array(length);
+  static proxy4All = iterable =>
+    new this((resolve, reject) => {
+      const { length } = iterable;
+      const proxy4Resolve = proxyFactory(length, resolve);
+      const values = Array(length);
 
-      iterator.forEach((item, index) =>
+      iterable.forEach((item, index) => {
+        this.resolve(item).then(value => {
+          values[index] = value;
+          proxy4Resolve(values);
+        }, reject);
+      });
+    });
+
+  static allSettled4After = iterable =>
+    new this(resolve => {
+      const { length } = iterable;
+      const done2Resolve = after(length, resolve);
+      const values = Array(length);
+
+      iterable.forEach((item, index) =>
         this.resolve(item).then(
           value => {
             values[index] = {
               status: Symbol.keyFor(this.#FULFILLED),
               value,
             };
-            resolveValues(values);
+            done2Resolve(values);
           },
           reason => {
             values[index] = {
               status: Symbol.keyFor(this.#REJECTED),
               reason,
             };
-            resolveValues(values);
+            done2Resolve(values);
+          }
+        )
+      );
+    });
+
+  static proxy4AllSettled = iterable =>
+    new this(resolve => {
+      const { length } = iterable;
+      const proxy4Resolve = proxyFactory(length, resolve);
+      const values = Array(length);
+
+      iterable.forEach((item, index) =>
+        this.resolve(item).then(
+          value => {
+            values[index] = {
+              status: Symbol.keyFor(this.#FULFILLED),
+              value,
+            };
+            proxy4Resolve(values);
+          },
+          reason => {
+            values[index] = {
+              status: Symbol.keyFor(this.#REJECTED),
+              reason,
+            };
+            proxy4Resolve(values);
           }
         )
       );
@@ -294,15 +313,29 @@ class PromisesA {
   }; */
 
   static defer = (deferral = {}) =>
-    Object.assign(deferral, {
-      promise: new this((resolve, reject) =>
-        Object.assign(deferral, { resolve, reject })
+    Object.defineProperty(deferral, 'promise', {
+      value: new this((resolve, reject) =>
+        Object.defineProperties(deferral, {
+          resolve: {
+            value: resolve,
+          },
+          reject: {
+            value: reject,
+          },
+        })
       ),
     });
 
   static get deferred() {
     return this.defer;
   }
+
+  /*   static defer4Assign = (deferral = {}) =>
+    Object.assign(deferral, {
+      promise: new this((resolve, reject) =>
+        Object.assign(deferral, { resolve, reject })
+      ),
+    }); */
 
   /*   static defer4Map = () => {
     const deferral = new Map();
@@ -314,14 +347,14 @@ class PromisesA {
 
     return deferral.set('promise', promise);
   }; */
-  static defer4Map = (deferral = new Map()) =>
+  /*   static defer4Map = (deferral = new Map()) =>
     deferral.set(
       'promise',
       Reflect.construct(this, [
         (resolve, reject) =>
           deferral.set('resolve', resolve).set('reject', reject),
       ])
-    );
+    ); */
 }
 
 module.exports = PromisesA;
